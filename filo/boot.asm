@@ -1,17 +1,10 @@
 [BITS 16]
 [ORG 0x7C00]
-	xchg bx, bx
-
+boot_loader:
 	mov ah, 0Eh
 	mov bh, 0Fh
 	mov bl, 0
-	mov al, 'R'
-	int 10h
 	mov al, 'M'
-	int 10h
-	mov al, 'A'
-	int 10h
-	mov al, 'P'
 	int 10h
 
 read_mmap:
@@ -67,21 +60,21 @@ fail16b:
 	mov ah, 0Eh
 	mov bh, 0Fh
 	mov bl, 0
-	mov al, 'F'
-	int 10h
-	mov al, 'A'
-	int 10h
-	mov al, 'I'
-	int 10h
-	mov al, 'L'
+	mov al, '!'
 	int 10h
 	mov al, dl
 	int 10h
 
 	jmp $
-	
+
+
 enable_pmode:
-	xchg bx,bx
+	mov ah, 0Eh
+	mov bh, 0Fh
+	mov bl, 0
+	mov al, 'P'
+	int 10h
+
 	cli
 
 	xor ax, ax		; Set DS to 0000h
