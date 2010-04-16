@@ -10,13 +10,14 @@ label resb 8 ; 008h
 length resd 1	; 010h In sectors (512 bytes)
 Rest is reserved
 
-3rd-4th sector: Name table
+3rd sector: Root Name table
  0 1 2 3 4 5 6 7 8 9 A B C D E F
 | File name     | Type  |^|Size |
                          ^Flags
 
-5th sector: Bitmap
-6th sector: Reserved / bitmap2?
+4th sector: Bitmap
+5th sector: Bitmap 2
+6th sector: Reserved / bitmap3?
 
 
 7th-2880th: file/directory storage
