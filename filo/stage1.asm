@@ -52,21 +52,10 @@ read_drive_info:
 	test dl, 0x80 ; 0x80 bit indicates hard disk
 	jnz .fail_not_floppy
 
-	mov si, 4+1		; 4 tries
-.retry_read:
-	dec si
-	jz .fail_io
-
-	xor ax, ax		; int 13h,ah=00h: DISK - RESET DISK SYSTEM
-	int 0x13
-	mov ax, 0x0201		; int 13h,ah=02h: DISK - READ SECTOR(S) INTO MEMORY
-	mov cx, 0x0003
-	xor dh, dh
+	mov cx, 0x0003		; Cylinder 0, Sector 3
+	xor dh, dh		; Head 0
 	mov bx, read_buffer
-	int 0x13
-	jc .retry_read		; Read error
-	cmp al, 1
-	jne .fail_io		; Incorrect number of sectors read
+	call read_sector
 
 	cmp word [read_buffer+56], 0xEF53	; Verify ext2 magic number
 	jne .fail_ext2
@@ -76,11 +65,6 @@ read_drive_info:
 ; Not booting from a floppy
 .fail_not_floppy:
 	mov dl, 'F'
-	jmp fail16b
-
-; I/O failure
-.fail_io:
-	mov dl, 'I'
 	jmp fail16b
 
 ; ext2 format error
@@ -120,9 +104,45 @@ fail16b:
 	int 10h
 	mov al, dl
 	int 10h
-
 .inf_loop:
 	jmp $
+
+
+; Reads one sector from a disk
+; Limited to cylinder < 256
+; ch = cylinder/track number (0-255)
+; cl = sector number (1-63)
+; dh = head number (0-1)
+; dl = disk id
+; es:bx = destination buffer
+; ax, si trashed
+read_sector:
+	mov si, 4		; 4 tries
+	jmp .first_read
+
+.retry_read:
+	dec si
+	jz .fail_io
+
+	xor ax, ax		; int 13h,ah=00h: DISK - RESET DISK SYSTEM
+	int 0x13
+.first_read:
+	mov ax, 0x0201		; int 13h,ah=02h: DISK - READ SECTOR(S) INTO MEMORY
+	mov cx, 0x0003
+	xor dh, dh
+	mov bx, read_buffer
+	int 0x13
+	jc .retry_read		; Read error
+
+	cmp al, 1
+	jne .fail_io		; Incorrect number of sectors read
+
+	ret
+
+; I/O failure
+.fail_io:
+	mov dl, 'I'
+	jmp fail16b
 
 
 times 510-($-$$) db 0
