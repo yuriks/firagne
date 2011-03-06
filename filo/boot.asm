@@ -1,3 +1,5 @@
+[map symbols]
+
 MMAP_MAX_ENTRIES equ 32
 
 [BITS 16]
@@ -169,11 +171,11 @@ gdt_desc:
 times 510-($-$$) db 0
 	dw 0xAA55
 
-[map symbols]
 section .stack nobits start=0x0500
 stack_end:
 	resb 0x7C00 - 0x0500
 stack_begin:
+
 section .bss start=0x7E00
 
 struc mmap_entry
@@ -189,15 +191,12 @@ MMT_ACPI_REC	equ 0x0003
 MMT_ACPI_SAVE	equ 0x0004
 
 
-boot_flags1:
-	resb 1
+boot_flags1: resb 1
 BF1_HAS_VGA	equ 1 << 0
 
 
-memmap_count:
-	resd 1
-memmap:
-	resb mmap_entry_size * MMAP_MAX_ENTRIES
+memmap_count: resd 1
+memmap:	resb mmap_entry_size * MMAP_MAX_ENTRIES
 
 ; System map
 ; 0500 - 7BFF : Stack
