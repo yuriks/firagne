@@ -195,7 +195,9 @@ boot_flags1: resb 1
 BF1_HAS_VGA	equ 1 << 0
 
 
+alignb 4
 memmap_count: resd 1
+alignb 8
 memmap:	resb mmap_entry_size * MMAP_MAX_ENTRIES
 
 ; System map
