@@ -170,11 +170,11 @@ times 510-($-$$) db 0
 	dw 0xAA55
 
 [map symbols]
-section .stack nobits vstart=0x0500
+section .stack nobits start=0x0500
 stack_end:
 	resb 0x7C00 - 0x0500
 stack_begin:
-section .bss vstart=0x7E00
+section .bss start=0x7E00
 
 struc mmap_entry
 	.base	resq 1
