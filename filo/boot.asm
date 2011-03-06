@@ -2,8 +2,16 @@ MMAP_MAX_ENTRIES equ 32
 
 [BITS 16]
 section .text start=0x7C00
+	cli
 	jmp 0x0000:boot_loader
 boot_loader:
+	xor ax, ax		; Set segments to 0x0000
+	mov ds, ax
+	mov es, ax
+	mov ss, ax
+	mov sp, stack_begin	; Setup stack
+	sti
+
 	mov ah, 0Eh
 	mov bh, 0Fh
 	mov bl, 0
@@ -11,10 +19,6 @@ boot_loader:
 	int 10h
 
 read_mmap:
-	xor ax, ax		; Set DS and ES to 0000h
-	mov ds, ax
-	mov es, ax
-
 	mov word [memmap_count], MMAP_MAX_ENTRIES	; MMAP_MAX_ENTRIES positions free
 
 	mov ebx, 0		; Beginning of map
@@ -94,11 +98,13 @@ enable_pmode:
 
 [BITS 32]
 jump_to_32b:
-	mov ax, 10h		; Set up DS and SS to our data segment
+	mov ax, 10h		; Set data and stack segments to our data descriptor
 	mov ds, ax
+	mov es, ax
 	mov ss, ax
 
 	mov esp, stack_begin	; Setup stack
+	sti
 
 	mov byte [0B80A0h], 'F'
 	mov byte [0B80A1h], 4Eh
