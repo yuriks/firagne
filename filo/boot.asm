@@ -12,11 +12,21 @@ boot_loader:
 	mov sp, stack_begin	; Setup stack
 	sti
 
+detect_video:
+	and byte [boot_flags1], ~BF1_HAS_VGA	; Clear 'Has VGA' bit
+	mov ax, 0x1A00		; int 10h,ax=1A00: GET DISPLAY COMBINATION CODE
+	int 0x10
+	cmp al, 0x1A
+	jne .no_video
+
+	or byte [boot_flags1], BF1_HAS_VGA	; We have a VGA
+
 	mov ah, 0Eh
 	mov bh, 0Fh
 	mov bl, 0
 	mov al, 'M'
 	int 10h
+.no_video:
 
 read_mmap:
 	mov word [memmap_count], MMAP_MAX_ENTRIES	; MMAP_MAX_ENTRIES positions free
@@ -67,6 +77,9 @@ SMAP_MAGIC equ 0x534D4150
 
 ; Print '!' and char in dl and then halt
 fail16b:
+	test byte [boot_flags1], BF1_HAS_VGA
+	jz .inf_loop
+
 	mov ah, 0Eh
 	mov bh, 0Fh
 	mov bl, 0
@@ -75,16 +88,21 @@ fail16b:
 	mov al, dl
 	int 10h
 
+.inf_loop:
 	jmp $
 
 
 enable_pmode:
+	test byte [boot_flags1], BF1_HAS_VGA
+	jz .no_video
+
 	; Print 'P'
 	mov ah, 0Eh
 	mov bh, 0Fh
 	mov bl, 0
 	mov al, 'P'
 	int 10h
+.no_video:
 
 	cli
 
@@ -105,6 +123,9 @@ jump_to_32b:
 
 	mov esp, stack_begin	; Setup stack
 	sti
+
+	test byte [boot_flags1], BF1_HAS_VGA
+	jz halt_loop
 
 	mov byte [0B80A0h], 'F'
 	mov byte [0B80A1h], 4Eh
@@ -166,6 +187,12 @@ MMT_RAM		equ 0x0001
 MMT_RESERVED	equ 0x0002
 MMT_ACPI_REC	equ 0x0003
 MMT_ACPI_SAVE	equ 0x0004
+
+
+boot_flags1:
+	resb 1
+BF1_HAS_VGA	equ 1 << 0
+
 
 memmap_count:
 	resd 1
