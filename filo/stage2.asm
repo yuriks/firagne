@@ -1,14 +1,31 @@
 [map symbols]
 
+%define DATA16(x) x + 0x7E00
+%define DATA32(x) x - 0x7E00
+
 MMAP_MAX_ENTRIES equ 32
 
+[CPU X64]
 [BITS 16]
-section .text start=0x7C00
+section .text16 progbits start=0x0000
 	cli
-	jmp 0x0000:boot_loader
-boot_loader:
-	xor ax, ax		; Set segments to 0x0000
-	mov ds, ax
+
+	; Setup Unreal Mode
+	lgdt [cs:unreal_gdt_desc]	; Load GDT with minimal entries
+
+	mov eax, cr0		; Enable protected mode
+	or eax, 1
+	mov cr0, eax
+
+	mov bx, 0x08		; Load base/limit/flags to seg. regs
+	mov ds, bx
+	mov es, bx
+
+	and eax, ~1		; Exit protected mode
+	mov cr0, eax
+
+	xor ax, ax		; Set segments base to 0x0000
+	mov ds, ax		; Only overwrites base, limit/flags unchanged
 	mov es, ax
 	mov ss, ax
 	mov sp, stack_begin	; Setup stack
@@ -108,7 +125,7 @@ enable_pmode:
 
 	cli
 
-	lgdt [gdt_desc]		; Load GDT from 0000(DS):gdt_desc
+	lgdt [DATA32(cs:gdt_desc)]	; Load GDT
 
 	mov eax, cr0		; Enable protection
 	or eax, 1
@@ -116,7 +133,29 @@ enable_pmode:
 
 	jmp 08h:jump_to_32b	; Jump to our code segment
 
+
+unreal_gdt: ; Unreal mode GDT
+; 0x00 - null descriptor
+	dd 0
+	dd 0
+
+; 0x08 - data descriptor
+	dw 0xFFFF		; Limit 0:15
+	dw 0x0000		; Base 0:15
+	db 0x00			; Base 16:23
+	db 10010010b		; Seg present + ring 0 + !system seg + data read/write
+	db 11001111b		; 4kb granularity + 32-bit + 0xF limit
+	db 0x00			; Base 24:31
+unreal_gdt_end:
+
+unreal_gdt_desc:
+	dw unreal_gdt_end - unreal_gdt	; Limit
+	dd 0x7E00 + unreal_gdt	; Address
+
+
+
 [BITS 32]
+section .text32 progbits start=($-$$) vstart=(0x7E00 + ($-$$))
 jump_to_32b:
 	mov ax, 10h		; Set data and stack segments to our data descriptor
 	mov ds, ax
@@ -124,7 +163,6 @@ jump_to_32b:
 	mov ss, ax
 
 	mov esp, stack_begin	; Setup stack
-	sti
 
 	test byte [boot_flags1], BF1_HAS_VGA
 	jz halt_loop
@@ -143,40 +181,37 @@ halt_loop:
 	jmp halt_loop
 
 gdt:
-gdt_null: ; 00h
+; 0x00 - null descriptor
 	dd 0
 	dd 0
 
-gdt_code: ; 08h
-	dw 0FFFFh		; Limit 0:15
-	dw 00000h		; Base 0:15
-	db 000h			; Base 16:23
+; 0x08 - code descriptor
+	dw 0xFFFF		; Limit 0:15
+	dw 0x0000		; Base 0:15
+	db 0x00			; Base 16:23
 	db 10011010b		; Seg present + ring 0 + !system seg + code read/exec
 	db 11001111b		; 4kb granularity + 32-bit + 0xF limit
-	db 000h			; Base 24:31
+	db 0x00			; Base 24:31
 
-gdt_data: ; 16h
-	dw 0FFFFh		; Limit 0:15
-	dw 00000h		; Base 0:15
-	db 000h			; Base 16:23
+; 0x10 - data descriptor
+	dw 0xFFFF		; Limit 0:15
+	dw 0x0000		; Base 0:15
+	db 0x00			; Base 16:23
 	db 10010010b		; Seg present + ring 0 + !system seg + data read/write
 	db 11001111b		; 4kb granularity + 32-bit + 0xF limit
-	db 000h			; Base 24:31
+	db 0x00			; Base 24:31
 gdt_end:
 
 gdt_desc:
 	dw gdt_end - gdt	; Limit
 	dd gdt			; Address
 
-times 510-($-$$) db 0
-	dw 0xAA55
-
 section .stack nobits start=0x0500
 stack_end:
-	resb 0x7C00 - 0x0500
+	resb 0x2000 - 0x0500
 stack_begin:
 
-section .bss start=0x7E00
+section .bss start=0x2000
 
 struc mmap_entry
 	.base	resq 1
@@ -201,6 +236,6 @@ alignb 8
 memmap:	resb mmap_entry_size * MMAP_MAX_ENTRIES
 
 ; System map
-; 0500 - 7BFF : Stack
-; 7C00 - 7DFF : Boot code
-; 7E00 -
+; 0500 - 1FFF : Stack
+; 2000 - 7DFF : Variables
+; 7E00 - 17E00 : Stage 2 boot code
