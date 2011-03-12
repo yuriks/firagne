@@ -3,6 +3,40 @@
 %define DATA16(x) x + 0x7E00
 %define DATA32(x) x - 0x7E00
 
+; GDT_ENTRY %1=base %2=limit %3=flags
+%macro	GDT_ENTRY 3
+	dw %2 & 0xFFFF				; Limit 15:0
+	dw %1 & 0xFFFF				; Base 15:0
+	db (%1 >> 16) & 0xFF			; Base 23:16
+	dw (%3 & 0xF0FF) | ((%2 >> 8) & 0x0F00)	; Flags + Limit 19:16
+	db (%1 >> 24) & 0xFF			; Base 31:24
+%endmacro
+
+%macro	GDT_NULL_ENTRY 0
+	dd 0
+	dd 0
+%endmacro
+
+GDT_GRANULARITY_BYTE equ (0 << 15)
+GDT_GRANULARITY_4KB equ (1 << 15)
+GDT_DEFAULT_16BIT equ (0 << 14)
+GDT_DEFAULT_32BIT equ (1 << 14)
+GDT_LONG_MODE equ (1 << 13)
+GDT_OS_DEFINED equ (1 << 12)
+GDT_PRESENT equ (1 << 7)
+%define GDT_RING(x) ((x & 0x3) << 5)
+GDT_DESCRIPTOR_SYSTEM equ (0 << 4)
+GDT_DESCRIPTOR_CODE_DATA equ (1 << 4)
+GDT_ACESSED equ (1 << 0)
+
+GDT_TYPE_DATA equ (0 << 3)
+GDT_TYPE_DATA_EXPAND_DOWN equ (1 << 2)
+GDT_TYPE_DATA_WRITABLE equ (1 << 1)
+GDT_TYPE_CODE equ (1 << 3)
+GDT_TYPE_CODE_CONFORMING equ (1 << 2)
+GDT_TYPE_CODE_READABLE equ (1 << 1)
+
+
 MMAP_MAX_ENTRIES equ 32
 
 [CPU X64]
@@ -136,16 +170,12 @@ enable_pmode:
 
 unreal_gdt: ; Unreal mode GDT
 ; 0x00 - null descriptor
-	dd 0
-	dd 0
+GDT_NULL_ENTRY
 
 ; 0x08 - data descriptor
-	dw 0xFFFF		; Limit 0:15
-	dw 0x0000		; Base 0:15
-	db 0x00			; Base 16:23
-	db 10010010b		; Seg present + ring 0 + !system seg + data read/write
-	db 11001111b		; 4kb granularity + 32-bit + 0xF limit
-	db 0x00			; Base 24:31
+GDT_ENTRY 0x00000000, 0xFFFFF, \
+	GDT_GRANULARITY_4KB | GDT_DEFAULT_32BIT | GDT_PRESENT | GDT_RING(0) | \
+	GDT_DESCRIPTOR_CODE_DATA | GDT_TYPE_DATA | GDT_TYPE_DATA_WRITABLE
 unreal_gdt_end:
 
 unreal_gdt_desc:
@@ -182,24 +212,17 @@ halt_loop:
 
 gdt:
 ; 0x00 - null descriptor
-	dd 0
-	dd 0
+GDT_NULL_ENTRY
 
 ; 0x08 - code descriptor
-	dw 0xFFFF		; Limit 0:15
-	dw 0x0000		; Base 0:15
-	db 0x00			; Base 16:23
-	db 10011010b		; Seg present + ring 0 + !system seg + code read/exec
-	db 11001111b		; 4kb granularity + 32-bit + 0xF limit
-	db 0x00			; Base 24:31
+GDT_ENTRY 0x00000000, 0xFFFFF, \
+	GDT_GRANULARITY_4KB | GDT_DEFAULT_32BIT | GDT_PRESENT | GDT_RING(0) | \
+	GDT_DESCRIPTOR_CODE_DATA | GDT_TYPE_CODE | GDT_TYPE_CODE_READABLE
 
 ; 0x10 - data descriptor
-	dw 0xFFFF		; Limit 0:15
-	dw 0x0000		; Base 0:15
-	db 0x00			; Base 16:23
-	db 10010010b		; Seg present + ring 0 + !system seg + data read/write
-	db 11001111b		; 4kb granularity + 32-bit + 0xF limit
-	db 0x00			; Base 24:31
+GDT_ENTRY 0x00000000, 0xFFFFF, \
+	GDT_GRANULARITY_4KB | GDT_DEFAULT_32BIT | GDT_PRESENT | GDT_RING(0) | \
+	GDT_DESCRIPTOR_CODE_DATA | GDT_TYPE_DATA | GDT_TYPE_DATA_WRITABLE
 gdt_end:
 
 gdt_desc:
