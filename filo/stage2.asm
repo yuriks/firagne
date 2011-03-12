@@ -42,6 +42,44 @@ MMAP_MAX_ENTRIES equ 32
 [CPU X64]
 [BITS 16]
 section .text16 progbits start=0x0000
+enable_a20:
+	; Check for A20 line
+	xor ax, ax
+	mov ds, ax
+	mov ax, 0xFFFF
+	mov es, ax
+
+	mov ax, [0x7DFE]	; stage1 (with 0xAA55 signature) should still be loaded
+	mov bx, [es:0x7E0E]
+	cmp ax, bx
+	jne .a20_enabled
+
+	not ax			; Change and overwrite the signature
+	mov [0x7DFE], ax
+	mov bx, [es:0x7E0E]	; Check if wrapped location also changed
+	cmp ax, bx
+	jne .a20_enabled
+
+	mov al, '$'
+	jmp fail16b
+
+	mov ax, 0x2401		; int 15h/ax=2401h - ENABLE A20 GATE
+	int 0x15
+	jnc .a20_enabled
+
+	cmp ah, 0x86		; Function not supported?
+	jne .fail_a20		; Failed for some other reason, bail.
+
+	; Add more methods here as needed
+	jmp .fail_a20		; All our attempts failed, bail.
+.a20_enabled:
+	jmp setup_unreal_mode
+
+.fail_a20:
+	mov al, 'A';20 gate
+	jmp fail16b
+
+setup_unreal_mode:
 	cli
 
 	; Setup Unreal Mode
