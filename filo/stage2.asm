@@ -17,6 +17,12 @@
 	dd 0
 %endmacro
 
+%macro	DEF_DATA 2+
+	[SECTION .data]
+	%1 %2
+	__SECT__
+%endmacro
+
 GDT_GRANULARITY_BYTE equ (0 << 15)
 GDT_GRANULARITY_4KB equ (1 << 15)
 GDT_DEFAULT_16BIT equ (0 << 14)
@@ -41,44 +47,8 @@ MMAP_MAX_ENTRIES equ 32
 
 [CPU X64]
 [BITS 16]
+section .data progbits follows=.text32 vfollows=.text32
 section .text16 progbits start=0x0000
-enable_a20:
-	; Check for A20 line
-	xor ax, ax
-	mov ds, ax
-	mov ax, 0xFFFF
-	mov es, ax
-
-	mov ax, [0x7DFE]	; stage1 (with 0xAA55 signature) should still be loaded
-	mov bx, [es:0x7E0E]
-	cmp ax, bx
-	jne .a20_enabled
-
-	not ax			; Change and overwrite the signature
-	mov [0x7DFE], ax
-	mov bx, [es:0x7E0E]	; Check if wrapped location also changed
-	cmp ax, bx
-	jne .a20_enabled
-
-	mov al, '$'
-	jmp fail16b
-
-	mov ax, 0x2401		; int 15h/ax=2401h - ENABLE A20 GATE
-	int 0x15
-	jnc .a20_enabled
-
-	cmp ah, 0x86		; Function not supported?
-	jne .fail_a20		; Failed for some other reason, bail.
-
-	; Add more methods here as needed
-	jmp .fail_a20		; All our attempts failed, bail.
-.a20_enabled:
-	jmp setup_unreal_mode
-
-.fail_a20:
-	mov al, 'A';20 gate
-	jmp fail16b
-
 setup_unreal_mode:
 	cli
 
@@ -112,12 +82,45 @@ detect_video:
 
 	or byte [boot_flags1], BF1_HAS_VGA	; We have a VGA
 
-	mov ah, 0Eh
-	mov bh, 0Fh
-	mov bl, 0
-	mov al, 'M'
-	int 10h
+DEF_DATA .video_init_msg, db `Initialized video.\n`,0
+	mov esi, .video_init_msg
+	call print_str
 .no_video:
+
+enable_a20:
+	; Check for A20 line
+	xor ax, ax
+	mov ds, ax
+	mov ax, 0xFFFF
+	mov es, ax
+
+	mov ax, [0x7DFE]	; stage1 (with 0xAA55 signature) should still be loaded
+	mov bx, [es:0x7E0E]
+	cmp ax, bx
+	jne .a20_enabled
+
+	not ax			; Change and overwrite the signature
+	mov [0x7DFE], ax
+	mov bx, [es:0x7E0E]	; Check if wrapped location also changed
+	cmp ax, bx
+	jne .a20_enabled
+
+	mov ax, 0x2401		; int 15h/ax=2401h - ENABLE A20 GATE
+	int 0x15
+	jnc .a20_enabled
+
+	cmp ah, 0x86		; Function not supported?
+	jne .fail_a20		; Failed for some other reason, bail.
+
+	; Add more methods here as needed
+	jmp .fail_a20		; All our attempts failed, bail.
+.a20_enabled:
+	jmp read_mmap
+
+DEF_DATA .fail_a20_string, db `Failed to enable A20 gate!\n`,0
+.fail_a20:
+	mov esi, .fail_a20_string
+	jmp fail16bstr
 
 read_mmap:
 	mov word [memmap_count], MMAP_MAX_ENTRIES	; MMAP_MAX_ENTRIES positions free
@@ -149,14 +152,16 @@ SMAP_MAGIC equ 0x534D4150
 	jmp .rmap_loop
 
 ; Failure due to carry flag
+DEF_DATA .fail_int_string, db `Failed to read BIOS memory map!\n`,0
 .fail_int:
-	mov dl, 'I';nterrupt
-	jmp fail16b
+	mov esi, .fail_int_string
+	jmp fail16bstr
 
 ; Failure due to running out of mmap entries
+DEF_DATA .fail_out_of_space_string, db `Ran out of space for storing memory map entries!\n`,0
 .fail_out_of_space:
-	mov dl, 'B';uffer
-	jmp fail16b
+	mov esi, .fail_out_of_space_string
+	jmp fail16bstr
 
 .rmap_done:
 	mov ax, MMAP_MAX_ENTRIES	; entries read = max entries - free entries
@@ -166,34 +171,43 @@ SMAP_MAGIC equ 0x534D4150
 	jmp enable_pmode
 
 
-; Print '!' and char in dl and then halt
-fail16b:
+; Print string pointed to by esi (null terminated).
+print_str:
 	test byte [boot_flags1], BF1_HAS_VGA
-	jz .inf_loop
+	jz .end_loop
 
-	mov ah, 0Eh
-	mov bh, 0Fh
-	mov bl, 0
-	mov al, '!'
-	int 10h
-	mov al, dl
-	int 10h
+	mov ah, 0x0E
+	mov bx, 0x0F00
 
-.inf_loop:
-	jmp $
+.loop:
+	mov al, byte [esi]
+	or al, al		; Check for 0
+	jz .end_loop
 
+	int 0x10
+
+	inc esi
+
+	cmp al, `\n`
+	jne .loop
+	mov al, `\r`
+	int 0x10
+
+	jmp .loop
+.end_loop:
+
+	ret
+
+; Print string pointed to by esi then halt.
+fail16bstr:
+	call print_str
+	cli
+	hlt
 
 enable_pmode:
-	test byte [boot_flags1], BF1_HAS_VGA
-	jz .no_video
-
-	; Print 'P'
-	mov ah, 0Eh
-	mov bh, 0Fh
-	mov bl, 0
-	mov al, 'P'
-	int 10h
-.no_video:
+DEF_DATA .pmode_pre_str, db "Entering protected mode...",0
+	mov esi, .pmode_pre_str
+	call print_str
 
 	cli
 
@@ -235,14 +249,14 @@ jump_to_32b:
 	test byte [boot_flags1], BF1_HAS_VGA
 	jz halt_loop
 
-	mov byte [0B80A0h], 'F'
-	mov byte [0B80A1h], 4Eh
-	mov byte [0B80A2h], 'I'
-	mov byte [0B80A3h], 4Eh
-	mov byte [0B80A4h], 'L'
-	mov byte [0B80A5h], 4Eh
-	mov byte [0B80A6h], 'O'
-	mov byte [0B80A7h], 4Eh
+	mov byte [0xB8000], 'F'
+	mov byte [0xB8001], 4Eh
+	mov byte [0xB8002], 'I'
+	mov byte [0xB8003], 4Eh
+	mov byte [0xB8004], 'L'
+	mov byte [0xB8005], 4Eh
+	mov byte [0xB8006], 'O'
+	mov byte [0xB8007], 4Eh
 
 halt_loop:
 	hlt
