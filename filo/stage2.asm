@@ -1,7 +1,9 @@
 [map symbols]
 
-%define DATA16(x) x + 0x7E00
-%define DATA32(x) x - 0x7E00
+LOAD_BASE equ 0x10000
+
+%define DATA16(x) x + LOAD_BASE
+%define DATA32(x) x - LOAB_BASE
 
 ; GDT_ENTRY %1=base %2=limit %3=flags
 %macro	GDT_ENTRY 3
@@ -211,13 +213,13 @@ DEF_DATA .pmode_pre_str, db "Entering protected mode...",0
 
 	cli
 
-	lgdt [DATA32(cs:gdt_desc)]	; Load GDT
+	lgdt [cs:gdt_desc16]	; Load GDT
 
 	mov eax, cr0		; Enable protection
 	or eax, 1
 	mov cr0, eax
 
-	jmp 08h:jump_to_32b	; Jump to our code segment
+	jmp 08h:dword jump_to_32b	; Jump to our code segment
 
 
 unreal_gdt: ; Unreal mode GDT
@@ -232,12 +234,15 @@ unreal_gdt_end:
 
 unreal_gdt_desc:
 	dw unreal_gdt_end - unreal_gdt	; Limit
-	dd 0x7E00 + unreal_gdt	; Address
+	dd LOAD_BASE + unreal_gdt	; Address
 
+gdt_desc16:
+	dw gdt_end - gdt	; Limit
+	dd gdt			; Address
 
 
 [BITS 32]
-section .text32 progbits start=($-$$) vstart=(0x7E00 + ($-$$))
+section .text32 progbits start=($-$$) vstart=(LOAD_BASE + ($-$$))
 jump_to_32b:
 	mov ax, 10h		; Set data and stack segments to our data descriptor
 	mov ds, ax
@@ -313,4 +318,4 @@ memmap:	resb mmap_entry_size * MMAP_MAX_ENTRIES
 ; System map
 ; 0500 - 1FFF : Stack
 ; 2000 - 7DFF : Variables
-; 7E00 - 17E00 : Stage 2 boot code
+; 10000 - 1FFFF : Stage 2 boot code

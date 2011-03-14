@@ -71,8 +71,14 @@ boot_loader:
 	; We want inode 2, the root: /
 	mov ax, 2
 	call read_inode
+	push ds
+	push ds
+	mov bp, 0x1000
+	mov es, bp
 	call read_inode_data
+	pop es
 
+	mov ds, bp
 	; Parse directory and look for our kernel
 	mov si, file_read_buf + 8
 	jmp .first_dir
@@ -95,10 +101,15 @@ boot_loader:
 
 	pop si
 	mov ax, word [si + (0-8)]	; Get inode
+
+.final_file_read:
+	mov di, ds
+	pop ds
 	call read_inode
+	mov es, di
 	call read_inode_data
 
-	jmp 0x07E0:0x0000
+	jmp 0x1000:0x0000
 
 ; Not booting from a floppy
 .fail_not_floppy:
@@ -181,12 +192,14 @@ read_inode:
 read_inode_data:
 	mov di, file_read_buf
 	; Read file size
-	push word [si + 4]
+	mov edx, dword [si + 4]
+	cmp edx, 0x10000	; 64kB max file size
+	jg .fail_file_too_large
+	push dx
 
 	; Move si to the first direct block pointer
 	add si, 40
 	mov cx, 12
-	mov dx, 2
 
 .direct_loop:
 	mov ax, word [si]	; Read block adress
@@ -194,20 +207,20 @@ read_inode_data:
 	test ax, ax
 	jz .reading_end
 	mov bx, di
-	pusha
 	call read_block
-	popa
 	add di, word [ext2_block_size_bytes]
 	loop .direct_loop
 
-	dec dx
-	jz .fail_file_too_large
-
 	mov ax, word [si]
+	push es
+	xor bx, bx
+	mov es, bx
 	mov bx, read_buffer
 	call read_block
+	pop es
 
 	mov si, read_buffer
+	mov cx, 256
 	jmp .direct_loop
 
 .reading_end:
@@ -320,11 +333,11 @@ ext2_block_size: resb 1 ; in sectors
 
 boot_device: resb 1
 
-section .file_read_buf nobits start=0x7E00
+section .file_read_buf nobits start=0x0 ;010000
 file_read_buf:
 
 ; System map
 ; 0500 - 14FF : Stack
 ; 1500 - 7BFF : Variables and buffers
 ; 7C00 - 7DFF : Boot code
-; 7E00 -      : File reading buffer
+; 10000 -      : File reading buffer
